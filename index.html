@@ -96,12 +96,23 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
 // ====== 1) PASTE YOUR FIREBASE CONFIG HERE ======
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAT4tZdim6SVPD2StDroindWbuN-6_k-Ew",
+  authDomain: "itg-borrowing-log.firebaseapp.com",
+  projectId: "itg-borrowing-log",
+  storageBucket: "itg-borrowing-log.firebasestorage.app",
+  messagingSenderId: "341978633903",
+  appId: "1:341978633903:web:581926d30b76db02fb265a"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
 // ====== 2) EDIT TOTAL QUANTITY OF EACH ITEM HERE ======
 const STOCK = {
