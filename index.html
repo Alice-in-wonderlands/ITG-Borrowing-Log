@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Equipment Borrowing</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1d2433;--muted:#6b7385;--pri:#3b5bdb;--ok:#2b8a3e;--warn:#e8590c;--bd:#e3e6ee}
+@media(prefers-color-scheme:dark){:root{--bg:#12141b;--card:#1c1f2a;--text:#eef0f6;--muted:#9aa2b5;--pri:#748ffc;--ok:#69db7c;--warn:#ffa94d;--bd:#2c3040}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);padding:16px}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:1.5rem;margin:8px 0 4px}h2{font-size:1.05rem;margin:0 0 12px}
+.sub{color:var(--muted);margin:0 0 16px;font-size:.9rem}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:16px}
+label.f{display:block;font-weight:600;font-size:.9rem;margin:14px 0 6px}
+input[type=text],input[type=email],input[type=password]{width:100%;padding:11px 12px;border:1px solid var(--bd);border-radius:10px;font-size:1rem;background:var(--bg);color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.grid.p{grid-template-columns:repeat(auto-fill,minmax(105px,1fr))}
+.item{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid var(--bd);border-radius:10px;cursor:pointer;font-size:.95rem;margin:0}
+.item.off{opacity:.5;cursor:not-allowed;background:var(--bg)}
+.item .st{display:block;font-size:.75rem;color:var(--ok);font-weight:600}
+.item.off .st{color:var(--warn)}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:var(--pri);color:#fff;font-weight:600}
+button:disabled{opacity:.6}
+button.ghost{background:transparent;color:var(--pri);border:1px solid var(--bd)}
+button.sm{padding:6px 12px;font-size:.85rem}
+button.ok{background:var(--ok)}
+.submit{width:100%;margin-top:16px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--bd)}
+.row:first-of-type{border-top:0}
+.who{font-weight:600}.meta{color:var(--muted);font-size:.85rem;margin-top:2px}
+.badge{font-size:.75rem;font-weight:700;padding:4px 10px;border-radius:99px;white-space:nowrap}
+.b-out{background:rgba(232,89,12,.15);color:var(--warn)}
+.b-in{background:rgba(43,138,62,.15);color:var(--ok)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.msg{padding:10px 12px;border-radius:10px;margin-top:12px;font-size:.9rem;display:none}
+.msg.show{display:block}.msg.err{background:rgba(232,89,12,.15);color:var(--warn)}.msg.good{background:rgba(43,138,62,.15);color:var(--ok)}
+.filters{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.filters button{background:transparent;color:var(--text);border:1px solid var(--bd);padding:6px 12px;font-size:.85rem}
+.filters button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);color:var(--text);max-width:340px;width:90%}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.empty{color:var(--muted);text-align:center;padding:16px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>📦 Equipment Borrowing</h1>
+      <p class="sub">Enter your name, pick the class period(s) and the item(s) you need.</p>
+    </div>
+    <button class="ghost sm" id="hostBtn">Host</button>
+  </div>
+
+  <div class="card">
+    <h2>Borrow request</h2>
+    <label class="f" for="name" style="margin-top:0">Your name</label>
+    <input type="text" id="name" maxlength="50" placeholder="Enter your name" autocomplete="name">
+    <label class="f">Which class period? (select one or more)</label>
+    <div class="grid p" id="periods"></div>
+    <label class="f">Items to borrow (1 of each)</label>
+    <div class="grid" id="items"></div>
+    <button class="submit" id="submit">Submit request</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Borrowing list</h2>
+    <div class="filters" id="filters">
+      <button data-f="all" class="on">All</button>
+      <button data-f="borrowing">Borrowed</button>
+      <button data-f="returned">Returned</button>
+    </div>
+    <div id="list"><div class="empty">Loading...</div></div>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="loginForm">
+    <h2>Host login</h2>
+    <input type="email" id="em" placeholder="Email" required>
+    <div style="height:8px"></div>
+    <input type="password" id="pw" placeholder="Password" required>
+    <div class="msg err" id="loginErr"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button type="button" class="ghost" id="cancel" style="flex:1">Cancel</button>
+      <button type="submit" style="flex:1">Log in</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+// ====== 1) PASTE YOUR FIREBASE CONFIG HERE ======
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// ====== 2) EDIT TOTAL QUANTITY OF EACH ITEM HERE ======
+const STOCK = {
+  "Laptop": 2,
+  "Graph calculator": 2,
+  "Calculator": 3,
+  "Charger": 3,
+  "Pen tablet": 2,
+  "Headset": 2
+};
+const PERIODS = ["3.15pm","4.15pm","5.15pm","5.45pm","6.45pm","7.45pm"];
+// =================================================
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtPeriod = p => Array.isArray(p) ? p.join(", ") : p;
+let loans = [], isHost = false, filter = "all", col = null, auth = null;
+
+// Render periods + items immediately (does not wait for the database)
+$("periods").innerHTML = PERIODS.map(p =>
+  `<label class="item"><input type="checkbox" value="${p}"><span>${p}</span></label>`).join("");
+
+function available(){
+  const av = {}; Object.keys(STOCK).forEach(k => av[k] = STOCK[k]);
+  loans.filter(l => l.status === "borrowing").forEach(l => l.items.forEach(i => { if(i in av) av[i]--; }));
+  return av;
+}
+function renderItems(){
+  const av = available();
+  const checked = [...document.querySelectorAll("#items input:checked")].map(i => i.value);
+  $("items").innerHTML = Object.keys(STOCK).map(it => {
+    const left = Math.max(av[it], 0), out = left === 0;
+    return `<label class="item ${out ? "off" : ""}">
+      <input type="checkbox" value="${esc(it)}" ${out ? "disabled" : ""} ${!out && checked.includes(it) ? "checked" : ""}>
+      <span>${esc(it)}<span class="st">${out ? "Out of stock" : "In stock: " + left + " / " + STOCK[it]}</span></span></label>`;
+  }).join("");
+}
+renderItems();
+
+function showMsg(t, type){ const m = $("msg"); m.textContent = t; m.className = "msg show " + type; setTimeout(() => m.className = "msg", 5000); }
+
+function renderList(){
+  const rows = loans.filter(l => filter === "all" || l.status === filter);
+  if(!rows.length){ $("list").innerHTML = '<div class="empty">No records yet</div>'; return; }
+  $("list").innerHTML = rows.map(l => {
+    const d = l.createdAt ? l.createdAt.toDate().toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+    const b = l.status === "borrowing" ? '<span class="badge b-out">Borrowed</span>' : '<span class="badge b-in">Returned</span>';
+    let act = "";
+    if(isHost){
+      act = l.status === "borrowing"
+        ? `<button class="sm ok" onclick="setStatus('${l.id}','returned')">Mark returned</button>`
+        : `<button class="sm ghost" onclick="setStatus('${l.id}','borrowing')">Undo</button>`;
+      act += ` <button class="sm ghost" onclick="del('${l.id}')">🗑</button>`;
+    }
+    return `<div class="row"><div>
+      <div class="who">${esc(l.name)} · Period ${esc(fmtPeriod(l.period))}</div>
+      <div class="meta">${l.items.map(esc).join(", ")} · ${d}</div>
+    </div><div style="text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end">${b}${act}</div></div>`;
+  }).join("");
+}
+
+const configured = !firebaseConfig.apiKey.startsWith("YOUR_");
+if(!configured){
+  $("list").innerHTML = '<div class="empty">Firebase is not configured yet. Paste your firebaseConfig in index.html.</div>';
+} else {
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore(); auth = firebase.auth(); col = db.collection("loans");
+  col.orderBy("createdAt","desc").onSnapshot(snap => {
+    loans = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    renderItems(); renderList();
+  }, err => { $("list").innerHTML = '<div class="empty">Could not load data. Check Firebase config / rules.</div>'; console.error(err); });
+  auth.onAuthStateChanged(u => {
+    isHost = !!u; $("hostBtn").textContent = isHost ? "Host ✓ (log out)" : "Host"; renderList();
+  });
+}
+
+$("submit").onclick = async () => {
+  if(!col) return showMsg("Firebase is not configured yet.", "err");
+  const name = $("name").value.trim();
+  const period = [...document.querySelectorAll("#periods input:checked")].map(i => i.value);
+  const items = [...document.querySelectorAll("#items input:checked")].map(i => i.value);
+  if(!name) return showMsg("Please enter your name.", "err");
+  if(!period.length) return showMsg("Please select at least one class period.", "err");
+  if(!items.length) return showMsg("Please select at least one item.", "err");
+  const av = available();
+  if(items.some(i => av[i] < 1)) return showMsg("Some items just ran out. Please review your selection.", "err");
+  $("submit").disabled = true;
+  try{
+    await col.add({name, period, items, status:"borrowing", createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    $("name").value = "";
+    document.querySelectorAll("#periods input, #items input").forEach(i => i.checked = false);
+    showMsg("Request submitted!", "good");
+  }catch(e){ showMsg("Something went wrong, please try again.", "err"); console.error(e); }
+  $("submit").disabled = false;
+};
+
+$("filters").onclick = e => {
+  if(e.target.dataset.f){ filter = e.target.dataset.f;
+    document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === e.target)); renderList(); }
+};
+window.setStatus = (id, status) => col.doc(id).update({status}).catch(e => alert("Permission denied: " + e.message));
+window.del = id => { if(confirm("Delete this record?")) col.doc(id).delete().catch(e => alert(e.message)); };
+
+$("hostBtn").onclick = () => {
+  if(!auth) return alert("Firebase is not configured yet.");
+  if(isHost) auth.signOut(); else $("dlg").showModal();
+};
+$("cancel").onclick = () => $("dlg").close();
+$("loginForm").onsubmit = async e => {
+  e.preventDefault();
+  try{ await auth.signInWithEmailAndPassword($("em").value, $("pw").value); $("dlg").close(); $("loginErr").className = "msg err"; }
+  catch(err){ const m = $("loginErr"); m.textContent = "Wrong email or password."; m.className = "msg err show"; }
+};
+</script>
+</body>
+</html>
