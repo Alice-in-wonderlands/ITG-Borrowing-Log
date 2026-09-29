@@ -215,19 +215,37 @@ if(!configured){
       return;
     }
 
-    // Bật Pop-up khi có yêu cầu mượn mới
-    snap.docChanges().forEach(change => {
-      if (change.type === "added") {
-        const data = change.doc.data();
-        const itemText = Array.isArray(data.items) ? data.items.join(", ") : data.items;
-        const periodText = Array.isArray(data.period) ? data.period.join(", ") : data.period;
-        
-        sendBrowserNotification(
-          "📦 New Borrow Request!",
-          `👤 ${data.name}\n⏰ Period: ${periodText}\n🛠 Items: ${itemText}`
-        );
-      }
-    });
+   snap.docChanges().forEach(change => {
+  if (change.type === "added") {
+    const data = change.doc.data();
+    const itemText = Array.isArray(data.items) ? data.items.join(", ") : data.items;
+    const periodText = Array.isArray(data.period) ? data.period.join(", ") : data.period;
+    
+    // Phát âm thanh thông báo nhẹ
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = 587.33; // Nốt D5
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    } catch(e) {}
+
+    // Gửi thông báo trình duyệt
+    if (Notification.permission === "granted") {
+      sendBrowserNotification(
+        "📦 New Borrow Request!",
+        `👤 ${data.name}\n⏰ Period: ${periodText}\n🛠 Items: ${itemText}`
+      );
+    } else {
+      console.log("Quyền thông báo chưa được cấp. Trạng thái hiện tại:", Notification.permission);
+    }
+  }
+});
+    
   }, err => { $("list").innerHTML = '<div class="empty">Could not load data. Check Firebase config / rules.</div>'; console.error(err); });
 
   auth.onAuthStateChanged(u => {
