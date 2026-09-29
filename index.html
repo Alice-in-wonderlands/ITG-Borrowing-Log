@@ -95,13 +95,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
-// ====== 1) PASTE YOUR FIREBASE CONFIG HERE ======
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
+// ====== 1) FIREBASE CONFIG ======
 const firebaseConfig = {
   apiKey: "AIzaSyAT4tZdim6SVPD2StDroindWbuN-6_k-Ew",
   authDomain: "itg-borrowing-log.firebaseapp.com",
@@ -111,6 +105,118 @@ const firebaseConfig = {
   appId: "1:341978633903:web:581926d30b76db02fb265a"
 };
 
+// ====== 2) EDIT TOTAL QUANTITY OF EACH ITEM HERE ======
+const STOCK = {
+  "Laptop": 2,
+  "Graph calculator": 2,
+  "Calculator": 3,
+  "Charger": 3,
+  "Pen tablet": 2,
+  "Headset": 3
+};
+const PERIODS = ["3.15pm","4.15pm","5.15pm","5.45pm","6.45pm","7.45pm"];
+// =================================================
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtPeriod = p => Array.isArray(p) ? p.join(", ") : p;
+let loans = [], isHost = false, filter = "all", col = null, auth = null;
+
+// Render periods + items immediately
+$("periods").innerHTML = PERIODS.map(p =>
+  `<label class="item"><input type="checkbox" value="${p}"><span>${p}</span></label>`).join("");
+
+function available(){
+  const av = {}; Object.keys(STOCK).forEach(k => av[k] = STOCK[k]);
+  loans.filter(l => l.status === "borrowing").forEach(l => l.items.forEach(i => { if(i in av) av[i]--; }));
+  return av;
+}
+function renderItems(){
+  const av = available();
+  const checked = [...document.querySelectorAll("#items input:checked")].map(i => i.value);
+  $("items").innerHTML = Object.keys(STOCK).map(it => {
+    const left = Math.max(av[it], 0), out = left === 0;
+    return `<label class="item ${out ? "off" : ""}">
+      <input type="checkbox" value="${esc(it)}" ${out ? "disabled" : ""} ${!out && checked.includes(it) ? "checked" : ""}>
+      <span>${esc(it)}<span class="st">${out ? "Out of stock" : "In stock: " + left + " / " + STOCK[it]}</span></span></label>`;
+  }).join("");
+}
+renderItems();
+
+function showMsg(t, type){ const m = $("msg"); m.textContent = t; m.className = "msg show " + type; setTimeout(() => m.className = "msg", 5000); }
+
+function renderList(){
+  const rows = loans.filter(l => filter === "all" || l.status === filter);
+  if(!rows.length){ $("list").innerHTML = '<div class="empty">No records yet</div>'; return; }
+  $("list").innerHTML = rows.map(l => {
+    const d = l.createdAt ? l.createdAt.toDate().toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+    const b = l.status === "borrowing" ? '<span class="badge b-out">Borrowed</span>' : '<span class="badge b-in">Returned</span>';
+    let act = "";
+    if(isHost){
+      act = l.status === "borrowing"
+        ? `<button class="sm ok" onclick="setStatus('${l.id}','returned')">Mark returned</button>`
+        : `<button class="sm ghost" onclick="setStatus('${l.id}','borrowing')">Undo</button>`;
+      act += ` <button class="sm ghost" onclick="del('${l.id}')">🗑</button>`;
+    }
+    return `<div class="row"><div>
+      <div class="who">${esc(l.name)} · Period ${esc(fmtPeriod(l.period))}</div>
+      <div class="meta">${l.items.map(esc).join(", ")} · ${d}</div>
+    </div><div style="text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end">${b}${act}</div></div>`;
+  }).join("");
+}
+
+const configured = !firebaseConfig.apiKey.startsWith("YOUR_");
+if(!configured){
+  $("list").innerHTML = '<div class="empty">Firebase is not configured yet. Paste your firebaseConfig in index.html.</div>';
+} else {
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore(); auth = firebase.auth(); col = db.collection("loans");
+  col.orderBy("createdAt","desc").onSnapshot(snap => {
+    loans = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    renderItems(); renderList();
+  }, err => { $("list").innerHTML = '<div class="empty">Could not load data. Check Firebase config / rules.</div>'; console.error(err); });
+  auth.onAuthStateChanged(u => {
+    isHost = !!u; $("hostBtn").textContent = isHost ? "Host ✓ (log out)" : "Host"; renderList();
+  });
+}
+
+$("submit").onclick = async () => {
+  if(!col) return showMsg("Firebase is not configured yet.", "err");
+  const name = $("name").value.trim();
+  const period = [...document.querySelectorAll("#periods input:checked")].map(i => i.value);
+  const items = [...document.querySelectorAll("#items input:checked")].map(i => i.value);
+  if(!name) return showMsg("Please enter your name.", "err");
+  if(!period.length) return showMsg("Please select at least one class period.", "err");
+  if(!items.length) return showMsg("Please select at least one item.", "err");
+  const av = available();
+  if(items.some(i => av[i] < 1)) return showMsg("Some items just ran out. Please review your selection.", "err");
+  $("submit").disabled = true;
+  try{
+    await col.add({name, period, items, status:"borrowing", createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    $("name").value = "";
+    document.querySelectorAll("#periods input, #items input").forEach(i => i.checked = false);
+    showMsg("Request submitted!", "good");
+  }catch(e){ showMsg("Something went wrong, please try again.", "err"); console.error(e); }
+  $("submit").disabled = false;
+};
+
+$("filters").onclick = e => {
+  if(e.target.dataset.f){ filter = e.target.dataset.f;
+    document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === e.target)); renderList(); }
+};
+window.setStatus = (id, status) => col.doc(id).update({status}).catch(e => alert("Permission denied: " + e.message));
+window.del = id => { if(confirm("Delete this record?")) col.doc(id).delete().catch(e => alert(e.message)); };
+
+$("hostBtn").onclick = () => {
+  if(!auth) return alert("Firebase is not configured yet.");
+  if(isHost) auth.signOut(); else $("dlg").showModal();
+};
+$("cancel").onclick = () => $("dlg").close();
+$("loginForm").onsubmit = async e => {
+  e.preventDefault();
+  try{ await auth.signInWithEmailAndPassword($("em").value, $("pw").value); $("dlg").close(); $("loginErr").className = "msg err"; }
+  catch(err){ const m = $("loginErr"); m.textContent = "Wrong email or password."; m.className = "msg err show"; }
+};
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
