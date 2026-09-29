@@ -188,22 +188,35 @@ $("submit").onclick = async () => {
   if(!col) return showMsg("Firebase is not configured yet.", "err");
   const name = $("name").value.trim();
   const period = [...document.querySelectorAll("#periods input:checked")].map(i => i.value);
+  
+  // 1. Lấy danh sách items được chọn từ các ô checkbox
   const items = [...document.querySelectorAll("#items input:checked")].map(i => i.value);
+  
+  // 2. Lấy giá trị từ ô "Other" (nếu có điền) và thêm vào danh sách items
+  const otherVal = $("otherItem").value.trim();
+  if (otherVal) {
+    items.push(otherVal);
+  }
+
   if(!name) return showMsg("Please enter your name.", "err");
   if(!period.length) return showMsg("Please select at least one class period.", "err");
   if(!items.length) return showMsg("Please select at least one item.", "err");
+
+  // 3. Kiểm tra tồn kho (chỉ áp dụng đối với những món có trong bảng STOCK)
   const av = available();
-  if(items.some(i => av[i] < 1)) return showMsg("Some items just ran out. Please review your selection.", "err");
+  if(items.some(i => (i in av) && av[i] < 1)) return showMsg("Some items just ran out. Please review your selection.", "err");
+
   $("submit").disabled = true;
   try{
     await col.add({name, period, items, status:"borrowing", createdAt: firebase.firestore.FieldValue.serverTimestamp()});
     $("name").value = "";
+    $("otherItem").value = ""; // Clear giá trị ô Other sau khi gửi thành công
     document.querySelectorAll("#periods input, #items input").forEach(i => i.checked = false);
     showMsg("Request submitted!", "good");
   }catch(e){ showMsg("Something went wrong, please try again.", "err"); console.error(e); }
   $("submit").disabled = false;
 };
-
+  
 $("filters").onclick = e => {
   if(e.target.dataset.f){ filter = e.target.dataset.f;
     document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === e.target)); renderList(); }
