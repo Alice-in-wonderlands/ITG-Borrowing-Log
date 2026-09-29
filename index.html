@@ -62,6 +62,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <div class="grid p" id="periods"></div>
     <label class="f">Items to borrow (1 of each)</label>
     <div class="grid" id="items"></div>
+<input type="text" id="otherItem" placeholder="Other item (optional, e.g. Cable, Mouse...)" style="margin-top:8px">
     <button class="submit" id="submit">Submit request</button>
     <div class="msg" id="msg"></div>
   </div>
@@ -74,6 +75,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
       <button data-f="returned">Returned</button>
     </div>
     <div id="list"><div class="empty">Loading...</div></div>
+    
   </div>
 </div>
 
@@ -114,7 +116,7 @@ const STOCK = {
   "Pen tablet": 2,
   "Headset": 3,
   "Adaptor": 1,
-  "Tablet": 1
+  "Tablet": 1,
 };
 const PERIODS = ["3.15pm","4.15pm","5.15pm","5.45pm","6.45pm","7.45pm"];
 // =================================================
