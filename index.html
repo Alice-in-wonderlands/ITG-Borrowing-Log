@@ -129,7 +129,7 @@ const fmtPeriod = p => Array.isArray(p) ? p.join(", ") : p;
 let loans = [], isHost = false, filter = "all", col = null, auth = null;
 let isFirstLoad = true;
 
-// Render periods + items immediately
+// Render periods
 $("periods").innerHTML = PERIODS.map(p =>
   `<label class="item"><input type="checkbox" value="${p}"><span>${p}</span></label>`).join("");
 
@@ -173,7 +173,7 @@ function renderList(){
   }).join("");
 }
 
-// Bật/gửi thông báo trình duyệt
+// Bật/Gửi thông báo trình duyệt
 function sendBrowserNotification(title, body) {
   if ("Notification" in window && Notification.permission === "granted") {
     new Notification(title, {
@@ -183,6 +183,32 @@ function sendBrowserNotification(title, body) {
   }
 }
 
+// Giọng đọc thông báo bằng Text-to-Speech
+function speakNotification(text) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel(); // Hủy các câu đọc dở trước đó
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.95; // Tốc độ đọc mượt vừa phải
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  }
+}
+
+// Bảng thông báo nổi In-App Toast
+function showInAppToast(text) {
+  let toast = document.getElementById("inAppToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "inAppToast";
+    toast.style.cssText = "position:fixed;bottom:20px;right:20px;background:var(--pri);color:#fff;padding:14px 18px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.2);font-weight:600;z-index:9999;transition:all 0.3s ease;max-width:340px;";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = text;
+  toast.style.display = "block";
+  setTimeout(() => { toast.style.display = "none"; }, 7000);
+}
+
 $("notiBtn").onclick = () => {
   if (!("Notification" in window)) {
     return alert("This browser does not support notifications.");
@@ -190,6 +216,7 @@ $("notiBtn").onclick = () => {
   Notification.requestPermission().then(permission => {
     if (permission === "granted") {
       showMsg("Notifications enabled!", "good");
+      speakNotification("Notifications are enabled!");
       sendBrowserNotification("📦 Equipment Borrowing", "Notifications are active!");
     } else {
       showMsg("Notification permission denied.", "err");
@@ -209,43 +236,34 @@ if(!configured){
     renderItems(); 
     renderList();
 
-    // Bỏ qua lần tải dữ liệu đầu tiên khi mở trang
+    // Bỏ qua lần tải đầu tiên khi mở web
     if (isFirstLoad) {
       isFirstLoad = false;
       return;
     }
 
-   snap.docChanges().forEach(change => {
-  if (change.type === "added") {
-    const data = change.doc.data();
-    const itemText = Array.isArray(data.items) ? data.items.join(", ") : data.items;
-    const periodText = Array.isArray(data.period) ? data.period.join(", ") : data.period;
-    
-    // Phát âm thanh thông báo nhẹ
-    try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.value = 587.33; // Nốt D5
-      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.2);
-    } catch(e) {}
+    // Khi có dữ liệu mới thêm vào
+    snap.docChanges().forEach(change => {
+      if (change.type === "added") {
+        const data = change.doc.data();
+        const itemText = Array.isArray(data.items) ? data.items.join(", ") : data.items;
+        const periodText = Array.isArray(data.period) ? data.period.join(", ") : data.period;
 
-    // Gửi thông báo trình duyệt
-    if (Notification.permission === "granted") {
-      sendBrowserNotification(
-        "📦 New Borrow Request!",
-        `👤 ${data.name}\n⏰ Period: ${periodText}\n🛠 Items: ${itemText}`
-      );
-    } else {
-      console.log("Quyền thông báo chưa được cấp. Trạng thái hiện tại:", Notification.permission);
-    }
-  }
-});
-    
+        // 🗣️ 1. Đọc giọng thông báo tên + món đồ
+        speakNotification(`New borrow request from ${data.name}. Items: ${itemText}`);
+
+        // 🔔 2. Pop-up hệ thống
+        if (Notification.permission === "granted") {
+          sendBrowserNotification(
+            "📦 New Borrow Request!",
+            `👤 ${data.name}\n⏰ Period: ${periodText}\n🛠 Items: ${itemText}`
+          );
+        }
+
+        // 💬 3. Khung thông báo góc màn hình web
+        showInAppToast(`📦 Request mới từ ${data.name} (Period ${periodText}): ${itemText}`);
+      }
+    });
   }, err => { $("list").innerHTML = '<div class="empty">Could not load data. Check Firebase config / rules.</div>'; console.error(err); });
 
   auth.onAuthStateChanged(u => {
@@ -258,10 +276,7 @@ $("submit").onclick = async () => {
   const name = $("name").value.trim();
   const period = [...document.querySelectorAll("#periods input:checked")].map(i => i.value);
   
-  // 1. Lấy danh sách items từ checkbox
   const items = [...document.querySelectorAll("#items input:checked")].map(i => i.value);
-  
-  // 2. Lấy giá trị ô "Other" nếu có điền
   const otherVal = $("otherItem").value.trim();
   if (otherVal) {
     items.push(otherVal);
@@ -271,7 +286,6 @@ $("submit").onclick = async () => {
   if(!period.length) return showMsg("Please select at least one class period.", "err");
   if(!items.length) return showMsg("Please select at least one item.", "err");
 
-  // 3. Kiểm tra tồn kho chỉ đối với các món trong STOCK
   const av = available();
   if(items.some(i => (i in av) && av[i] < 1)) return showMsg("Some items just ran out. Please review your selection.", "err");
 
