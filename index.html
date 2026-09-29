@@ -129,6 +129,9 @@ const fmtPeriod = p => Array.isArray(p) ? p.join(", ") : p;
 let loans = [], isHost = false, filter = "all", col = null, auth = null;
 let isFirstLoad = true;
 
+// Tạo ID riêng cho từng tab/phiên làm việc để tránh tự báo cho chính mình
+const currentSessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+
 // Render periods
 $("periods").innerHTML = PERIODS.map(p =>
   `<label class="item"><input type="checkbox" value="${p}"><span>${p}</span></label>`).join("");
@@ -183,16 +186,33 @@ function sendBrowserNotification(title, body) {
   }
 }
 
-// Giọng đọc thông báo bằng Text-to-Speech
+// 👩 GIỌNG ĐỌC NỮ THÔNG BÁO (FEMALE VOICE)
 function speakNotification(text) {
   if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel(); // Hủy các câu đọc dở trước đó
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
-    utterance.rate = 0.95; // Tốc độ đọc mượt vừa phải
-    utterance.pitch = 1.0;
+    utterance.rate = 0.95;
+    utterance.pitch = 1.1; // Chỉnh giọng hơi cao một chút để tự nhiên hơn
+
+    // Tìm giọng NỮ chuẩn tiếng Anh
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find(v => 
+      v.lang.startsWith('en') && 
+      (v.name.includes('Female') || v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Victoria') || v.name.includes('Zira') || v.name.includes('Karen'))
+    );
+    
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
+    }
+
     window.speechSynthesis.speak(utterance);
   }
+}
+
+// Tải danh sách giọng ngay khi trình duyệt sẵn sàng
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
 // Bảng thông báo nổi In-App Toast
@@ -236,7 +256,6 @@ if(!configured){
     renderItems(); 
     renderList();
 
-    // Bỏ qua lần tải đầu tiên khi mở web
     if (isFirstLoad) {
       isFirstLoad = false;
       return;
@@ -246,10 +265,16 @@ if(!configured){
     snap.docChanges().forEach(change => {
       if (change.type === "added") {
         const data = change.doc.data();
+
+        // ⚠️ NẾU CHÍNH LÀ TAB ĐANG GỬI THÌ KHÔNG PHÁT ÂM THANH/POPUP
+        if (data.sessionId === currentSessionId) {
+          return;
+        }
+
         const itemText = Array.isArray(data.items) ? data.items.join(", ") : data.items;
         const periodText = Array.isArray(data.period) ? data.period.join(", ") : data.period;
 
-        // 🗣️ 1. Đọc giọng thông báo tên + món đồ
+        // 🗣️ 1. Đọc giọng NỮ thông báo tên + món đồ
         speakNotification(`New borrow request from ${data.name}. Items: ${itemText}`);
 
         // 🔔 2. Pop-up hệ thống
@@ -291,7 +316,14 @@ $("submit").onclick = async () => {
 
   $("submit").disabled = true;
   try{
-    await col.add({name, period, items, status:"borrowing", createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    await col.add({
+      name, 
+      period, 
+      items, 
+      status: "borrowing", 
+      sessionId: currentSessionId, // Gửi kèm ID của phiên làm việc hiện tại
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
     $("name").value = "";
     $("otherItem").value = ""; 
     document.querySelectorAll("#periods input, #items input").forEach(i => i.checked = false);
