@@ -129,9 +129,6 @@ const fmtPeriod = p => Array.isArray(p) ? p.join(", ") : p;
 let loans = [], isHost = false, filter = "all", col = null, auth = null;
 let isFirstLoad = true;
 
-// Tạo ID riêng cho từng tab/phiên làm việc để tránh tự báo cho chính mình
-const currentSessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-
 // Render periods
 $("periods").innerHTML = PERIODS.map(p =>
   `<label class="item"><input type="checkbox" value="${p}"><span>${p}</span></label>`).join("");
@@ -186,16 +183,15 @@ function sendBrowserNotification(title, body) {
   }
 }
 
-// 👩 GIỌNG ĐỌC NỮ THÔNG BÁO (FEMALE VOICE)
+// Giọng đọc nữ thông báo
 function speakNotification(text) {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = 0.95;
-    utterance.pitch = 1.1; // Chỉnh giọng hơi cao một chút để tự nhiên hơn
+    utterance.pitch = 1.1;
 
-    // Tìm giọng NỮ chuẩn tiếng Anh
     const voices = window.speechSynthesis.getVoices();
     const femaleVoice = voices.find(v => 
       v.lang.startsWith('en') && 
@@ -210,7 +206,6 @@ function speakNotification(text) {
   }
 }
 
-// Tải danh sách giọng ngay khi trình duyệt sẵn sàng
 if ('speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
@@ -236,7 +231,7 @@ $("notiBtn").onclick = () => {
   Notification.requestPermission().then(permission => {
     if (permission === "granted") {
       showMsg("Notifications enabled!", "good");
-      speakNotification("Notifications are enabled!");
+      if (isHost) speakNotification("Notifications are enabled!");
       sendBrowserNotification("📦 Equipment Borrowing", "Notifications are active!");
     } else {
       showMsg("Notification permission denied.", "err");
@@ -261,23 +256,19 @@ if(!configured){
       return;
     }
 
-    // Khi có dữ liệu mới thêm vào
+    // ⛔ CHẶN HOÀN TOÀN: NẾU KHÔNG PHẢI HOST THÌ BỎ QUA TOÀN BỘ ÂM THANH & NOTIFICATION
+    if (!isHost) return;
+
     snap.docChanges().forEach(change => {
       if (change.type === "added") {
         const data = change.doc.data();
-
-        // ⚠️ NẾU CHÍNH LÀ TAB ĐANG GỬI THÌ KHÔNG PHÁT ÂM THANH/POPUP
-        if (data.sessionId === currentSessionId) {
-          return;
-        }
-
         const itemText = Array.isArray(data.items) ? data.items.join(", ") : data.items;
         const periodText = Array.isArray(data.period) ? data.period.join(", ") : data.period;
 
-        // 🗣️ 1. Đọc giọng NỮ thông báo tên + món đồ
+        // 🗣️ 1. Đọc giọng NỮ thông báo (Chỉ Host mới nghe)
         speakNotification(`New borrow request from ${data.name}. Items: ${itemText}`);
 
-        // 🔔 2. Pop-up hệ thống
+        // 🔔 2. Pop-up hệ thống (Chỉ Host mới nhận)
         if (Notification.permission === "granted") {
           sendBrowserNotification(
             "📦 New Borrow Request!",
@@ -285,7 +276,7 @@ if(!configured){
           );
         }
 
-        // 💬 3. Khung thông báo góc màn hình web
+        // 💬 3. Khung thông báo góc màn hình web (Chỉ Host mới thấy)
         showInAppToast(`📦 Request mới từ ${data.name} (Period ${periodText}): ${itemText}`);
       }
     });
@@ -321,7 +312,6 @@ $("submit").onclick = async () => {
       period, 
       items, 
       status: "borrowing", 
-      sessionId: currentSessionId, // Gửi kèm ID của phiên làm việc hiện tại
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     $("name").value = "";
